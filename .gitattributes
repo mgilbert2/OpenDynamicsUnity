@@ -1,0 +1,48 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Unity meta files should use LF
+*.meta text eol=lf
+
+# Unity YAML files should use LF
+*.asset text eol=lf
+*.prefab text eol=lf
+*.unity text eol=lf
+*.mat text eol=lf
+*.anim text eol=lf
+*.controller text eol=lf
+*.overrideController text eol=lf
+*.physicMaterial text eol=lf
+*.physicsMaterial2D text eol=lf
+*.playable text eol=lf
+*.mask text eol=lf
+*.brush text eol=lf
+*.signal text eol=lf
+*.preset text eol=lf
+*.spriteatlas text eol=lf
+*.asmdef text eol=lf
+*.asmref text eol=lf
+*.cs text eol=lf
+
+# R scripts
+*.R text eol=lf
+*.r text eol=lf
+
+# Python scripts
+*.py text eol=lf
+
+# Markdown
+*.md text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.mov binary
+*.mp4 binary
+*.mp3 binary
+*.pdf binary
+*.zip binary
+*.unitypackage binary

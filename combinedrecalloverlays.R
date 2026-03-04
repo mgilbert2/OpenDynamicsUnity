@@ -1,0 +1,455 @@
+# ============================================================================
+# Combined Recall Overlays
+# ============================================================================
+# This script visualizes the ACTUAL path taken during recall tests versus
+# the INTENDED route from training, arranged in a cumulative pyramid grid
+# showing progression as new patterns are added.
+#
+# Usage:
+#   # IMPORTANT: Set working directory to where this script is located, or use full path
+#   setwd("C:/Users/Mak/Attractors")  # Adjust to your actual path
+#   source("combinedrecalloverlays.R")
+# result <- visualizeRecallOverlays(
+#     folder = "C:/Users/Mak/AppData/LocalLow/DefaultCompany/Attractors/CSVExperimentLogs/_seed300",
+#     passThreshold = 80.0
+# )
+# 
+# Alternative: Use full path when sourcing:
+#   source("C:/Users/Mak/Attractors/combinedrecalloverlays.R")
+# ============================================================================
+
+# Set working directory to script location (if running via source)
+# This helps when sourcing the script from a different directory
+tryCatch({
+    if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
+        scriptPath <- rstudioapi::getActiveDocumentContext()$path
+        if (nchar(scriptPath) > 0 && file.exists(scriptPath)) {
+            scriptDir <- dirname(scriptPath)
+            if (file.exists(scriptDir)) {
+                setwd(scriptDir)
+                cat("Set working directory to:", scriptDir, "\n")
+            }
+        }
+    }
+}, error = function(e) {
+    # Silently fail if we can't determine script location
+    # User should set working directory manually or use full paths
+})
+
+library(ggplot2)
+library(gridExtra)
+library(dplyr)
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+# Read recall history CSV
+readRecallHistory <- function(folder) {
+    historyFile <- file.path(folder, "recall_history.csv")
+    if (file.exists(historyFile)) {
+        data <- read.csv(historyFile, stringsAsFactors = FALSE)
+        if ("patternId" %in% colnames(data) && "stage" %in% colnames(data) && 
+            "recallPercent" %in% colnames(data)) {
+            data$patternId <- as.character(data$patternId)
+            data$stage <- as.integer(data$stage)
+            data$recallPercent <- as.numeric(data$recallPercent)
+            if ("testNumber" %in% colnames(data)) {
+                data$testNumber <- as.integer(data$testNumber)
+            } else {
+                data$testNumber <- 1
+            }
+            return(data)
+        }
+    }
+    return(NULL)
+}
+
+# Extract pattern number for ordering
+extractPatternNum <- function(patId) {
+    numMatch <- regmatches(patId, regexpr("\\d+", patId))
+    if (length(numMatch) > 0) {
+        return(as.numeric(numMatch[1]))
+    }
+    return(999)
+}
+
+# Find path CSV files
+findPathFiles <- function(folder) {
+    files <- list.files(folder, pattern = "\\.csv$", full.names = TRUE)
+    
+    # Separate intended and actual paths
+    intendedFiles <- files[grepl("_intended_", files, ignore.case = TRUE)]
+    actualFiles <- files[!grepl("_intended_", files, ignore.case = TRUE) & 
+                         !grepl("experiment_summary", files, ignore.case = TRUE) & 
+                         !grepl("recall_summary", files, ignore.case = TRUE) &
+                         !grepl("recall_history", files, ignore.case = TRUE) &
+                         !grepl("overall_accuracy", files, ignore.case = TRUE)]
+    
+    # Extract pattern IDs from filenames
+    extractPatternId <- function(filename) {
+        basename <- basename(filename)
+        # Handle patterns like: recall_test_01_*, train_test_01_*, recall_geo_01_*
+        if (grepl("test_", basename, ignore.case = TRUE)) {
+            match <- regmatches(basename, regexpr("test_\\d+", basename, ignore.case = TRUE))
+            if (length(match) > 0) {
+                return(tolower(match[1]))
+            }
+        }
+        if (grepl("geo_", basename, ignore.case = TRUE)) {
+            match <- regmatches(basename, regexpr("geo_\\d+", basename, ignore.case = TRUE))
+            if (length(match) > 0) {
+                return(tolower(match[1]))
+            }
+        }
+        if (grepl("pat_", basename, ignore.case = TRUE)) {
+            match <- regmatches(basename, regexpr("pat_\\d+", basename, ignore.case = TRUE))
+            if (length(match) > 0) {
+                return(tolower(match[1]))
+            }
+        }
+        return(NA)
+    }
+    
+    # Create data frames
+    intendedInfo <- data.frame(
+        filename = intendedFiles,
+        patternId = sapply(intendedFiles, extractPatternId),
+        stringsAsFactors = FALSE
+    )
+    intendedInfo <- intendedInfo[!is.na(intendedInfo$patternId), ]
+    
+    actualInfo <- data.frame(
+        filename = actualFiles,
+        patternId = sapply(actualFiles, extractPatternId),
+        stringsAsFactors = FALSE
+    )
+    actualInfo <- actualInfo[!is.na(actualInfo$patternId), ]
+    
+    # Add timestamp for sorting
+    actualInfo$timestamp <- file.mtime(actualInfo$filename)
+    
+    return(list(intended = intendedInfo, actual = actualInfo))
+}
+
+# Load path CSV file
+loadPathFile <- function(filepath) {
+    if (!file.exists(filepath)) {
+        return(NULL)
+    }
+    
+    data <- read.csv(filepath, stringsAsFactors = FALSE)
+    colnames(data) <- tolower(colnames(data))
+    
+    if (nrow(data) == 0) {
+        return(NULL)
+    }
+    
+    if (!("x" %in% colnames(data)) || !("z" %in% colnames(data))) {
+        return(NULL)
+    }
+    
+    return(data.frame(
+        x = as.numeric(data$x),
+        z = as.numeric(data$z),
+        stringsAsFactors = FALSE
+    ))
+}
+
+# Calculate global test number across all patterns
+calculateGlobalTestNumber <- function(recallHistory) {
+    recallHistory <- recallHistory[order(recallHistory$stage, recallHistory$testNumber), ]
+    recallHistory$globalTestNumber <- 1:nrow(recallHistory)
+    return(recallHistory)
+}
+
+# Get the new pattern added at a given stage
+getNewPatternAtStage <- function(recallHistory, stage) {
+    stageData <- recallHistory[recallHistory$stage == stage, ]
+    if (nrow(stageData) == 0) return(NA)
+    # Find pattern with testNumber == 1 at this stage (newly added)
+    newPattern <- stageData[stageData$testNumber == 1, ]
+    if (nrow(newPattern) > 0) {
+        return(newPattern$patternId[1])
+    }
+    return(NA)
+}
+
+# ============================================================================
+# Main Function
+# ============================================================================
+
+visualizeRecallOverlays <- function(folder, passThreshold = 80.0, savePlot = TRUE) {
+    
+    cat("============================================================================\n")
+    cat("Combined Recall Overlays: Intended vs Actual Paths\n")
+    cat("============================================================================\n")
+    cat("Folder:", folder, "\n")
+    cat("Pass Threshold:", passThreshold, "%\n\n")
+    
+    # Read recall history
+    recallHistory <- readRecallHistory(folder)
+    if (is.null(recallHistory) || nrow(recallHistory) == 0) {
+        stop("recall_history.csv not found or empty.")
+    }
+    
+    cat("Loaded", nrow(recallHistory), "recall test results\n")
+    
+    # Calculate global test numbers
+    recallHistory <- calculateGlobalTestNumber(recallHistory)
+    
+    # Find path files
+    pathFiles <- findPathFiles(folder)
+    if (nrow(pathFiles$intended) == 0 || nrow(pathFiles$actual) == 0) {
+        stop("No path CSV files found in folder.")
+    }
+    
+    cat("Found", nrow(pathFiles$intended), "intended path files\n")
+    cat("Found", nrow(pathFiles$actual), "actual path files\n\n")
+    
+    # First pass: Calculate global coordinate limits
+    cat("=== First Pass: Calculating Global Coordinate Limits ===\n")
+    allX <- numeric()
+    allZ <- numeric()
+    
+    for (i in seq_len(nrow(recallHistory))) {
+        test <- recallHistory[i, ]
+        patId <- test$patternId
+        
+        # Find actual path file (most recent for this pattern)
+        actualFiles <- pathFiles$actual[pathFiles$actual$patternId == patId, ]
+        if (nrow(actualFiles) > 0) {
+            actualFiles <- actualFiles[order(actualFiles$timestamp, decreasing = TRUE), ]
+            actualData <- loadPathFile(actualFiles$filename[1])
+            if (!is.null(actualData)) {
+                allX <- c(allX, actualData$x)
+                allZ <- c(allZ, actualData$z)
+            }
+        }
+        
+        # Find intended path file
+        intendedFiles <- pathFiles$intended[pathFiles$intended$patternId == patId, ]
+        if (nrow(intendedFiles) > 0) {
+            intendedData <- loadPathFile(intendedFiles$filename[1])
+            if (!is.null(intendedData)) {
+                allX <- c(allX, intendedData$x)
+                allZ <- c(allZ, intendedData$z)
+            }
+        }
+    }
+    
+    if (length(allX) == 0 || length(allZ) == 0) {
+        stop("No valid path data found.")
+    }
+    
+    # Calculate limits with padding
+    xRange <- range(allX, na.rm = TRUE)
+    zRange <- range(allZ, na.rm = TRUE)
+    xPadding <- (xRange[2] - xRange[1]) * 0.1
+    zPadding <- (zRange[2] - zRange[1]) * 0.1
+    
+    globalXLim <- c(xRange[1] - xPadding, xRange[2] + xPadding)
+    globalZLim <- c(zRange[1] - zPadding, zRange[2] + zPadding)
+    
+    cat("Global X limits:", globalXLim, "\n")
+    cat("Global Z limits:", globalZLim, "\n\n")
+    
+    # Second pass: Create plots organized by stage
+    cat("=== Second Pass: Creating Overlay Plots ===\n")
+    
+    # Suppress individual plot output
+    oldOptions <- options()
+    while (dev.cur() != 1) {
+        tryCatch(dev.off(), error = function(e) NULL)
+    }
+    pdf(file = NULL)
+    
+    # Organize tests by stage for pyramid layout
+    allStages <- sort(unique(recallHistory$stage))
+    plotsByStage <- list()
+    allPlots <- list()
+    plotIndex <- 1
+    
+    # Process each stage
+    for (stage in allStages) {
+        stageTests <- recallHistory[recallHistory$stage == stage, ]
+        # Sort by pattern number to get consistent ordering
+        stageTests$patternNum <- sapply(stageTests$patternId, extractPatternNum)
+        stageTests <- stageTests[order(stageTests$patternNum), ]
+        
+        stagePlots <- list()
+        
+        # Process each test in this stage
+        for (i in seq_len(nrow(stageTests))) {
+            test <- stageTests[i, ]
+            patId <- test$patternId
+            testNum <- test$testNumber
+            globalTestNum <- test$globalTestNumber
+            recallPercent <- test$recallPercent
+            passed <- recallPercent >= passThreshold
+            
+            # Get new pattern at this stage
+            newPattern <- getNewPatternAtStage(recallHistory, stage)
+            
+            # Find actual path file for this specific test
+            actualFiles <- pathFiles$actual[pathFiles$actual$patternId == patId, ]
+            if (nrow(actualFiles) == 0) {
+                cat("  Stage", stage, ", Test", globalTestNum, ": No actual path file for", patId, "\n")
+                next
+            }
+            # Sort by timestamp (oldest first) to match chronological test order
+            actualFiles <- actualFiles[order(actualFiles$timestamp), ]
+            
+            # Use the testNum-th file for this pattern
+            if (testNum > nrow(actualFiles)) {
+                actualData <- loadPathFile(actualFiles$filename[nrow(actualFiles)])
+            } else {
+                actualData <- loadPathFile(actualFiles$filename[testNum])
+            }
+            
+            # Find intended path file
+            intendedFiles <- pathFiles$intended[pathFiles$intended$patternId == patId, ]
+            if (nrow(intendedFiles) == 0) {
+                cat("  Stage", stage, ", Test", globalTestNum, ": No intended path file for", patId, "\n")
+                next
+            }
+            intendedData <- loadPathFile(intendedFiles$filename[1])
+            
+            if (is.null(actualData) || is.null(intendedData)) {
+                cat("  Stage", stage, ", Test", globalTestNum, ": Could not load paths for", patId, "\n")
+                next
+            }
+            
+            # Find all OTHER patterns (all patterns except the current one) to show interference
+            # Get all unique pattern IDs from the recall history
+            allPatternIds <- unique(recallHistory$patternId)
+            # Remove the current pattern
+            otherPatternIds <- allPatternIds[allPatternIds != patId]
+            
+            # Load intended paths for all other patterns
+            otherIntendedPaths <- list()
+            for (otherPatId in otherPatternIds) {
+                otherIntendedFiles <- pathFiles$intended[pathFiles$intended$patternId == otherPatId, ]
+                if (nrow(otherIntendedFiles) > 0) {
+                    otherIntendedData <- loadPathFile(otherIntendedFiles$filename[1])
+                    if (!is.null(otherIntendedData)) {
+                        otherIntendedPaths[[length(otherIntendedPaths) + 1]] <- otherIntendedData
+                    }
+                }
+            }
+            
+            # Create overlay plot
+            p <- ggplot()
+            
+            # Add all other patterns' intended paths first (very light/thin to show interference)
+            for (otherPath in otherIntendedPaths) {
+                p <- p + geom_path(data = otherPath, aes(x = x, y = z), 
+                                 color = "gray70", linewidth = 0.15, alpha = 0.3, linetype = "dashed")
+            }
+            
+            # Add current intended path (blue, solid, prominent)
+            p <- p + geom_path(data = intendedData, aes(x = x, y = z), 
+                             color = "blue", linewidth = 0.8, alpha = 0.7, linetype = "solid")
+            
+            # Add actual path (red, solid, prominent)
+            p <- p + geom_path(data = actualData, aes(x = x, y = z), 
+                             color = "red", linewidth = 0.8, alpha = 0.7, linetype = "solid") +
+                # Title with test info
+                labs(
+                    title = paste0("Test #", globalTestNum, " | ", patId, " | Stage ", stage, 
+                                 "\nNew: ", ifelse(is.na(newPattern), "N/A", newPattern),
+                                 " | Recall: ", sprintf("%.1f%%", recallPercent),
+                                 " | ", ifelse(passed, "[PASS]", "[FAIL]")),
+                    x = "X",
+                    y = "Z"
+                ) +
+                theme_minimal() +
+                theme(
+                    plot.title = element_text(size = 8, face = "bold", hjust = 0.5),
+                    axis.title = element_text(size = 7),
+                    axis.text = element_text(size = 6),
+                    plot.margin = margin(5, 5, 5, 5)
+                ) +
+                coord_fixed(ratio = 1, xlim = globalXLim, ylim = globalZLim)
+            
+            stagePlots[[length(stagePlots) + 1]] <- p
+            allPlots[[plotIndex]] <- p
+            plotIndex <- plotIndex + 1
+            cat("  Created plot for Stage", stage, ", Test #", globalTestNum, " (", patId, ")\n", sep = "")
+        }
+        
+        plotsByStage[[stage]] <- stagePlots
+    }
+    
+    # Close null device
+    dev.off()
+    options(oldOptions)
+    
+    if (length(allPlots) == 0) {
+        stop("No valid plots created.")
+    }
+    
+    cat("\n=== Creating Pyramid Grid Visualization ===\n")
+    cat("Total plots to combine:", length(allPlots), "\n")
+    cat("Stages:", length(allStages), "\n")
+    
+    # Create pyramid layout: each row (stage) has stage number of columns
+    maxStage <- max(allStages)
+    nRows <- maxStage
+    nCols <- maxStage
+    
+    # Create layout matrix for triangular/pyramid grid
+    # Each row i has i plots, starting from column 1
+    layoutMatrix <- matrix(NA, nrow = nRows, ncol = nCols)
+    plotCounter <- 1
+    
+    for (stage in allStages) {
+        row <- stage
+        stagePlots <- plotsByStage[[stage]]
+        nPlotsInRow <- length(stagePlots)
+        for (col in seq_len(nPlotsInRow)) {
+            if (plotCounter <= length(allPlots)) {
+                layoutMatrix[row, col] <- plotCounter
+                plotCounter <- plotCounter + 1
+            }
+        }
+    }
+    
+    cat("Pyramid layout:", nRows, "rows ×", nCols, "columns\n")
+    cat("Layout structure:\n")
+    for (i in seq_len(nRows)) {
+        rowPlots <- sum(!is.na(layoutMatrix[i, ]))
+        if (rowPlots > 0) {
+            cat("  Row", i, "(Stage", i, "):", rowPlots, "plots\n")
+        }
+    }
+    
+    # Create plot list - use all plots we created
+    plotList <- allPlots[seq_len(min(length(allPlots), plotCounter - 1))]
+    
+    # Use arrangeGrob with layout matrix
+    combinedGrob <- arrangeGrob(grobs = plotList, layout_matrix = layoutMatrix)
+    
+    # For display, use grid.arrange
+    combinedPlot <- grid.arrange(grobs = plotList, layout_matrix = layoutMatrix)
+    
+    # Save plot
+    if (savePlot) {
+        rgraphsDir <- file.path(folder, "rgraphs")
+        if (!dir.exists(rgraphsDir)) {
+            dir.create(rgraphsDir, recursive = TRUE)
+        }
+        
+        pdfFile <- file.path(rgraphsDir, "combined_recall_overlays.pdf")
+        
+        ggsave(pdfFile, plot = combinedGrob, width = nCols * 3, height = nRows * 3, 
+               units = "in", limitsize = FALSE)
+        cat("\n[SUCCESS] Saved pyramid plot to:", pdfFile, "\n")
+        cat("  Size:", nCols * 3, "×", nRows * 3, "inches\n")
+    }
+    
+    cat("\n=== Summary ===\n")
+    cat("Total recall tests visualized:", length(allPlots), "\n")
+    
+    return(list(combinedPlot = combinedPlot, allPlots = allPlots, recallHistory = recallHistory))
+}
