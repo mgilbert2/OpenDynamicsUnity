@@ -99,12 +99,9 @@ See `CRITICAL_PARAMETERS.md` for detailed parameter documentation.
 
 ## License
 
-[Add your license here]
 
 ## Contributing
 
-[Add contribution guidelines if desired]
 
 ## Citation
 
-If you use this code in research, please cite appropriately.
