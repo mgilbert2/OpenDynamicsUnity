@@ -1,4 +1,6 @@
 using UnityEngine;
+using System.IO;
+using System.Text;
 
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public class PotentialSurface : MonoBehaviour
@@ -156,5 +158,64 @@ public class PotentialSurface : MonoBehaviour
         float y = Mathf.Lerp(y0, y1, tz);
 
         return transform.TransformPoint(new Vector3(0f, y, 0f)).y;
+    }
+
+    /// <summary>
+    /// Exports the potential surface coordinates to a CSV file.
+    /// Columns: X, Z, Y (height), Potential (raw potential value before heightScale)
+    /// </summary>
+    /// <param name="filePath">Full path to the CSV file to create</param>
+    /// <returns>True if export succeeded, false otherwise</returns>
+    public bool ExportSurfaceToCSV(string filePath)
+    {
+        if (field == null || mesh == null || verts == null)
+        {
+            Debug.LogError("[PotentialSurface] Cannot export: field, mesh, or verts is null. Make sure UpdateHeights() has been called.");
+            return false;
+        }
+
+        try
+        {
+            // Ensure heights are up to date
+            UpdateHeights();
+
+            int n = resolution + 1;
+            StringBuilder csv = new StringBuilder();
+            
+            // Header
+            csv.AppendLine("X,Z,Y,Potential");
+
+            // Export all vertices
+            for (int z = 0; z < n; z++)
+            {
+                for (int x = 0; x < n; x++)
+                {
+                    int i = z * n + x;
+                    Vector3 world = transform.TransformPoint(verts[i]);
+                    
+                    // Get raw potential (Y / heightScale to reverse the scaling)
+                    float rawPotential = verts[i].y / heightScale;
+                    
+                    // Write: X, Z, Y (height), Potential (raw)
+                    csv.AppendLine($"{world.x:F6},{world.z:F6},{verts[i].y:F6},{rawPotential:F6}");
+                }
+            }
+
+            // Write to file
+            string directory = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllText(filePath, csv.ToString());
+            Debug.Log($"[PotentialSurface] ✓ Exported {n * n} surface points to: {filePath}");
+            return true;
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"[PotentialSurface] Failed to export surface to CSV: {e.Message}");
+            return false;
+        }
     }
 }

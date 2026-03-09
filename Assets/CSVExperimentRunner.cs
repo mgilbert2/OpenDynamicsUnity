@@ -78,14 +78,19 @@ public class CSVExperimentRunner : MonoBehaviour
         public float delayBetweenTrainingPasses = 0.2f;
 
         [Header("Learning Parameters")]
-        [Tooltip("Maximum depth any single well can reach. 0 = no limit. Prevents wells from becoming too strong. Applied to LearningImprint component.")]
-        public float maxWellDepth = 0f;
+        [Tooltip("Maximum depth any single well can reach. CRITICAL: Set to 3.0 or lower to prevent stuck ball. 0 = no limit (NOT RECOMMENDED). Applied to LearningImprint component.")]
+        public float maxWellDepth = 3.0f;
 
         [Tooltip("If enabled, automatically normalizes all well depths so the maximum depth equals normalizedDepthTarget. Applied to LearningImprint component.")]
         public bool normalizeDepth = false;
 
         [Tooltip("Target maximum depth after normalization (used when normalizeDepth is enabled). Applied to LearningImprint component.")]
         public float normalizedDepthTarget = 1.0f;
+
+        [Header("Ball Physics")]
+        [Tooltip("Friction/damping coefficient for the ball. Lower = less friction (try 0.5-1.0 for minimal friction). WARNING: Setting to 0 may cause unstable physics or prevent movement. Default: 4.0. Applied to StatePointController component.")]
+        [Range(0f, 10f)]
+        public float ballDamping = 4f;
     }
 
     [Header("References")]
@@ -97,6 +102,9 @@ public class CSVExperimentRunner : MonoBehaviour
 
     [Tooltip("Reference to the learning system (LearningImprint)")]
     public LearningImprint learningImprint;
+
+    [Tooltip("Reference to the potential surface (optional, will try to get from ball if not set)")]
+    public PotentialSurface potentialSurface;
 
     [Tooltip("Reference to the waypoint CSV loader")]
     public WaypointPatternCSVLoader waypointLoader;
@@ -178,6 +186,25 @@ public class CSVExperimentRunner : MonoBehaviour
         else
         {
             Debug.LogWarning("[CSVExperimentRunner] LearningImprint is null - cannot apply learning parameters from config!");
+        }
+
+        // Apply ball physics parameters from config
+        if (ball != null)
+        {
+            ball.damping = config.ballDamping;
+            if (config.ballDamping == 0f)
+            {
+                Debug.LogWarning("[CSVExperimentRunner] ⚠️ ballDamping is set to 0 - this may cause unstable physics or prevent the ball from moving properly!");
+            }
+            else if (config.ballDamping < 0.5f)
+            {
+                Debug.LogWarning($"[CSVExperimentRunner] ⚠️ ballDamping ({config.ballDamping}) is very low - may cause unstable physics. Consider using 0.5-1.0 for minimal friction.");
+            }
+            Debug.Log($"[CSVExperimentRunner] Applied ball damping: {config.ballDamping}");
+        }
+        else
+        {
+            Debug.LogWarning("[CSVExperimentRunner] Ball is null - cannot apply damping parameter!");
         }
 
         // Load patterns from CSV
@@ -565,6 +592,10 @@ public class CSVExperimentRunner : MonoBehaviour
             
             Debug.Log($"[CSVExperimentRunner] Total learned attractors (wells): {totalWells}");
             
+            // Log final well statistics
+            learningImprint.LogWellStatistics("FINAL - After all training");
+            LogWellStatisticsToCSV(config, "FINAL");
+            
             // Warn if too many wells (potential performance/interference issue)
             if (totalWells > 5000)
             {
@@ -678,6 +709,9 @@ public class CSVExperimentRunner : MonoBehaviour
         // Print recall rate summary
         PrintRecallSummary(config);
         
+        // Export potential surface to CSV
+        ExportPotentialSurface(config);
+        
         Debug.Log($"[CSVExperimentRunner] ✅ Experiment '{config.experimentName}' complete! Logs saved to: {currentExperimentFolder}");
     }
 
@@ -713,6 +747,13 @@ public class CSVExperimentRunner : MonoBehaviour
 
         // Wait for pattern to complete (through all 60 waypoints with learning ON)
         yield return StartCoroutine(WaitForPatternCompletion(patternId));
+
+        // Log well statistics after this pattern
+        if (learningImprint != null)
+        {
+            learningImprint.LogWellStatistics($"After training pattern: {patternId}");
+            LogWellStatisticsToCSV(config, patternId);
+        }
 
         // Disable logging
         ball.EnableLogging(false);
@@ -1311,5 +1352,73 @@ public class CSVExperimentRunner : MonoBehaviour
         }
 
         return patternId;
+    }
+
+    /// <summary>
+    /// Exports the potential surface coordinates to CSV after experiment completion.
+    /// </summary>
+    private void ExportPotentialSurface(CSVExperimentConfig config)
+    {
+        // Try to find PotentialSurface
+        PotentialSurface surface = potentialSurface;
+        
+        if (surface == null && ball != null)
+        {
+            // Try to get from ball's surface reference
+            surface = ball.surface;
+        }
+        
+        if (surface == null)
+        {
+            // Try to find in scene
+            surface = FindObjectOfType<PotentialSurface>();
+        }
+        
+        if (surface == null)
+        {
+            Debug.LogWarning("[CSVExperimentRunner] PotentialSurface not found. Skipping surface export.");
+            return;
+        }
+        
+        // Create export path in experiment folder
+        string fileName = $"potential_surface_{config.experimentName}_{System.DateTime.Now:yyyyMMdd_HHmmss}.csv";
+        string exportPath = Path.Combine(currentExperimentFolder, fileName);
+        
+        if (surface.ExportSurfaceToCSV(exportPath))
+        {
+            Debug.Log($"[CSVExperimentRunner] ✓ Potential surface exported to: {exportPath}");
+        }
+        else
+        {
+            Debug.LogWarning($"[CSVExperimentRunner] Failed to export potential surface to: {exportPath}");
+        }
+    }
+
+    /// <summary>
+    /// Logs well statistics to CSV file for comparison analysis.
+    /// </summary>
+    private void LogWellStatisticsToCSV(CSVExperimentConfig config, string patternId)
+    {
+        if (learningImprint == null) return;
+
+        try
+        {
+            string fileName = $"well_statistics_{config.experimentName}.csv";
+            string filePath = Path.Combine(currentExperimentFolder, fileName);
+            
+            // Add pattern ID as a comment/metadata in the export
+            // We'll use a separate column for pattern context
+            string context = patternId;
+            
+            // Export with pattern context
+            if (learningImprint.ExportWellStatisticsToCSV(filePath, patternId))
+            {
+                Debug.Log($"[CSVExperimentRunner] ✓ Well statistics logged to: {filePath} (Pattern: {patternId})");
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"[CSVExperimentRunner] Failed to log well statistics: {e.Message}");
+        }
     }
 }

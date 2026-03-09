@@ -5,11 +5,11 @@
 # retrieved) at each stage as more patterns are learned.
 #
 # Usage:
-  # source("VisualizeOverallAccuracy.R")
-  # result <- createOverallAccuracyPlot(
-  #     folder = "C:/Users/Mak/AppData/LocalLow/DefaultCompany/Attractors/CSVExperimentLogs/_seed226",
-  #     passThreshold = 80.0
-  # )
+  source("VisualizeOverallAccuracy.R")
+  result <- createOverallAccuracyPlot(
+      folder = "C:/Users/Mak/AppData/LocalLow/DefaultCompany/Attractors/CSVExperimentLogs/_seed226",
+      passThreshold = 80.0
+  )
 # ============================================================================
 
 library(ggplot2)
