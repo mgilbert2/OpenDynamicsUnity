@@ -448,10 +448,13 @@ public class LearningImprint : MonoBehaviour
         }
         
         // Determine effective target (use the smaller of normalizedDepthTarget and maxWellDepth if cap is set)
+        // CRITICAL: maxWellDepth is a HARD CAP that must always be respected
+        // If normalization target exceeds the cap, we must use the cap instead
         float effectiveTarget = normalizedDepthTarget;
-        if (maxWellDepth > 0f && maxWellDepth < normalizedDepthTarget)
+        if (maxWellDepth > 0f)
         {
-            effectiveTarget = maxWellDepth;
+            // Always use the minimum of the two to ensure we never exceed maxWellDepth
+            effectiveTarget = Mathf.Min(normalizedDepthTarget, maxWellDepth);
         }
         
         // Always enforce cap first (prevents stuck ball scenarios)

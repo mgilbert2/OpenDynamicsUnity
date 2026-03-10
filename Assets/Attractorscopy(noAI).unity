@@ -288,6 +288,7 @@ MonoBehaviour:
   ball: {fileID: 1246347594}
   magnet: {fileID: 1456433638}
   learningImprint: {fileID: 2144349798}
+  potentialSurface: {fileID: 0}
   waypointLoader: {fileID: 386159636}
   experiments:
   - enabled: 1
@@ -316,9 +317,10 @@ MonoBehaviour:
     recallSampleInterval: 0
     trainingPassesPerPattern: 1
     delayBetweenTrainingPasses: 0
-    maxWellDepth: 3
+    maxWellDepth: 1
     normalizeDepth: 0
     normalizedDepthTarget: 1
+    ballDamping: 4
   logFolder: CSVExperimentLogs
   ballStartPosition: {x: 0, y: 0, z: 0}
 --- !u!4 &216200861
@@ -20190,6 +20192,7 @@ MonoBehaviour:
   maxWellDepth: 3
   normalizeDepth: 1
   normalizedDepthTarget: 3
+  minWellDepth: 0
   wellMergeDistance: 0.3
   learningWindows:
   - {x: 0, y: 25}
