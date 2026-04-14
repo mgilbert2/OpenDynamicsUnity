@@ -1,0 +1,59 @@
+OVERALL ACCURACY - FULL BATTERY ANALYSIS
+========================================================================
+
+Generated (local time): 2026-04-10 18:41:03
+Log root: C:/Users/Mak/AppData/LocalLow/DefaultCompany/Attractors/CSVExperimentLogs
+Seed: 1702
+Pass threshold (% recall per pattern): 90.5
+best_criterion: rmse_pct  (which model is "primary" when curve_model = "aic_best")
+curve_model: aic_best
+
+WHAT WAS COMPUTED
+------------------------------------------------------------------------
+For each Unity run: stage-wise overall accuracy (% patterns passing recall threshold),
+then four fits (linear, exponential_asymp, power_loglog, inverse_stage).
+RMSE_pct / MAE_pct / R2_pct are on the original % scale at observed stages.
+AIC is as reported by R (power_loglog is on log-y scale - not comparable to others).
+Columns best_by_rmse_pct, best_by_aic_comparable, best_by_aic_all mark winners.
+
+THIS BUNDLE
+------------------------------------------------------------------------
+C:/Users/Mak/Attractors/overall_accuracy_output/overall_accuracy_best_fit_seed_1702/battery_bundle_20260410_184103
+  figures/  - PNG per run (overall accuracy + fitted curve)
+  tables/   - combined CSVs + one summary CSV per run
+
+PER-RUN OVERVIEW (from combined_best_fit_summary.csv)
+------------------------------------------------------------------------
+run_basename  |  primary_best_model  |  primary_RMSE_pct  |  best_by_rmse_pct_model  |  best_by_rmse_pct_value  |  best_by_aic_comparable_model  |  best_by_aic_all_model  |  final_accuracy_pct
+radials_neutral_seed1702      |  inverse_stage  |  23.399335  |  inverse_stage  |  23.399335  |  inverse_stage  |  power_loglog  |  0.00000
+radials_condA_seed1702        |  linear         |  13.371630  |  linear         |  13.371630  |  linear         |  power_loglog  |  28.57143
+radials_condB_seed1702        |  inverse_stage  |  23.399335  |  inverse_stage  |  23.399335  |  inverse_stage  |  power_loglog  |  0.00000
+radials_condC_seed1702        |  linear         |  14.019713  |  linear         |  14.019713  |  linear         |  power_loglog  |  28.57143
+geometric20_neutral_seed1702  |  linear         |  8.325658  |  linear         |  8.325658  |  linear         |  power_loglog  |  25.00000
+geometric20_condA_seed1702    |  linear         |  11.111641  |  linear         |  11.111641  |  linear         |  power_loglog  |  62.50000
+geometric20_condB_seed1702    |  linear         |  11.794609  |  linear         |  11.794609  |  linear         |  power_loglog  |  0.00000
+geometric20_condC_seed1702    |  linear         |  7.146731  |  linear         |  7.146731  |  linear         |  power_loglog  |  37.50000
+
+PRIMARY BEST MODEL - HOW MANY RUNS
+------------------------------------------------------------------------
+Var1  |  Freq
+inverse_stage  |  2
+linear         |  6
+
+LOWEST RMSE (ON % SCALE) - WINNING MODEL PER RUN
+------------------------------------------------------------------------
+run_basename  |  model  |  RMSE_pct  |  MAE_pct  |  R2_pct  |  AIC
+radials_neutral_seed1702      |  inverse_stage  |  23.399335  |  16.098543  |  0.7317108  |  70.00305
+radials_condA_seed1702        |  linear         |  13.371630  |  11.438290  |  0.7297469  |  62.16903
+radials_condB_seed1702        |  inverse_stage  |  23.399335  |  16.098543  |  0.7317108  |  70.00305
+radials_condC_seed1702        |  linear         |  14.019713  |  11.797862  |  0.7717904  |  62.83164
+geometric20_neutral_seed1702  |  linear         |  8.325658  |  6.346726  |  0.8891949  |  62.61249
+geometric20_condA_seed1702    |  linear         |  11.111641  |  9.008291  |  0.6831976  |  67.23091
+geometric20_condB_seed1702    |  linear         |  11.794609  |  9.776786  |  0.8461196  |  68.18530
+geometric20_condC_seed1702    |  linear         |  7.146731  |  4.873512  |  0.8943995  |  60.16950
+
+SPREADSHEETS (open in Excel / R)
+------------------------------------------------------------------------
+  tables/combined_best_fit_summary.csv
+  tables/combined_all_models_metrics_long_seed_<seed>.csv
+

@@ -1,0 +1,9 @@
+run_basename,pass_threshold,n_stages,best_criterion,primary_best_model,primary_AIC,primary_RMSE_pct,best_model,best_AIC,best_by_rmse_pct_model,best_by_rmse_pct_value,best_by_aic_comparable_model,best_by_aic_comparable_AIC,best_by_aic_all_model,best_by_aic_all_AIC,plotted_curve_model,plotted_curve_AIC,plotted_curve_RMSE_pct,final_accuracy_pct
+radials_neutral_seed1702,90.5,7,rmse_pct,inverse_stage,70.0030461,23.39933533,inverse_stage,70.0030461,inverse_stage,23.39933533,inverse_stage,70.0030461,power_loglog,35.96703092,inverse_stage,70.0030461,23.39933533,0
+radials_condA_seed1702,90.5,7,rmse_pct,linear,62.16903407,13.37163041,linear,62.16903407,linear,13.37163041,linear,62.16903407,power_loglog,6.049256604,linear,62.16903407,13.37163041,28.57142857
+radials_condB_seed1702,90.5,7,rmse_pct,inverse_stage,70.0030461,23.39933533,inverse_stage,70.0030461,inverse_stage,23.39933533,inverse_stage,70.0030461,power_loglog,35.96703092,inverse_stage,70.0030461,23.39933533,0
+radials_condC_seed1702,90.5,7,rmse_pct,linear,62.83164156,14.01971335,linear,62.83164156,linear,14.01971335,linear,62.83164156,power_loglog,10.29797304,linear,62.83164156,14.01971335,28.57142857
+geometric20_neutral_seed1702,90.5,8,rmse_pct,linear,62.61248921,8.325657756,linear,62.61248921,linear,8.325657756,linear,62.61248921,power_loglog,2.109121488,linear,62.61248921,8.325657756,25
+geometric20_condA_seed1702,90.5,8,rmse_pct,linear,67.23090926,11.11164098,linear,67.23090926,linear,11.11164098,linear,67.23090926,power_loglog,1.087311063,linear,67.23090926,11.11164098,62.5
+geometric20_condB_seed1702,90.5,8,rmse_pct,linear,68.1852974,11.7946089,linear,68.1852974,linear,11.7946089,linear,68.1852974,power_loglog,42.72840981,linear,68.1852974,11.7946089,0
+geometric20_condC_seed1702,90.5,8,rmse_pct,linear,60.16949808,7.14673134,linear,60.16949808,linear,7.14673134,linear,60.16949808,power_loglog,-0.341444611,linear,60.16949808,7.14673134,37.5

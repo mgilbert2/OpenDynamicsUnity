@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using UnityEngine;
 
 [RequireComponent(typeof(SphereCollider))]
@@ -18,6 +18,9 @@ public class StatePointController : MonoBehaviour
     public float damping = 4f;
     [Tooltip("Maximum allowed speed (world units/s).")]
     public float maxSpeed = 12f;
+    
+    [Tooltip("Velocity multiplier applied each frame (1.0 = normal, >1.0 = boost, <1.0 = reduce). Applied after damping but before maxSpeed cap.")]
+    public float velocityMultiplier = 1.0f;
 
     [Header("Noise")]
     public bool addNoise = false;
@@ -146,7 +149,13 @@ public class StatePointController : MonoBehaviour
 
             // --- Integrate motion ---
             vel += accel * Time.deltaTime;
+            
+            // Apply total velocity damping
             vel -= vel * damping * Time.deltaTime;
+            
+            // Apply velocity multiplier (boost/reduce)
+            vel *= velocityMultiplier;
+            
             if (vel.magnitude > maxSpeed)
                 vel = vel.normalized * maxSpeed;
 
@@ -252,7 +261,39 @@ public class StatePointController : MonoBehaviour
     {
         transform.position = position;
         vel = Vector3.zero;
+        if (drawTrail)
+        {
+            if (trail == null)
+                trail = GetComponent<TrailRenderer>();
+            if (trail != null)
+                trail.Clear();
+        }
         SnapToSurface();
+    }
+
+    /// <summary>
+    /// Adds an instantaneous velocity change in XZ (useful for giving the ball an initial "kick" so it can roll).
+    /// </summary>
+    public void AddVelocityXZ(Vector3 deltaVelocity)
+    {
+        deltaVelocity.y = 0f;
+        vel += deltaVelocity;
+    }
+
+    /// <summary>
+    /// Gets the current velocity vector (XZ plane only).
+    /// </summary>
+    public Vector3 GetVelocityXZ()
+    {
+        return new Vector3(vel.x, 0f, vel.z);
+    }
+
+    /// <summary>
+    /// Gets the current speed (magnitude of velocity).
+    /// </summary>
+    public float GetSpeed()
+    {
+        return new Vector3(vel.x, 0f, vel.z).magnitude;
     }
 
     /// <summary>

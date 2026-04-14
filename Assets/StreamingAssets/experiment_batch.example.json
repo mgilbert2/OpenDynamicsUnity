@@ -1,0 +1,43 @@
+{
+  "entries": [
+    {
+      "enabled": true,
+      "experimentName": "example_StimB_baseline",
+      "randomSeed": 1702,
+      "stimulusCsvFileName": "waypoint_test_patterns_10.csv",
+      "patternIdsToRun": ["test_01", "test_02", "test_03", "test_04", "test_05", "test_06", "test_07"],
+      "runRecallAfterEachPattern": false,
+      "cumulativeRecallMode": true,
+      "randomizeRecallOrder": false,
+      "resetStabilizationTime": 0,
+      "noiseDelayAfterTraining": 0,
+      "recallNoiseTarget": 1,
+      "noiseStrength": 100,
+      "whiteNoise": false,
+      "noiseSmoothing": 0,
+      "magnetNoiseStrength": 100,
+      "magnetNoiseWhite": false,
+      "magnetNoiseSmoothing": 0.04,
+      "magnetNoiseMeanReversion": 2.57,
+      "enableCueFadeSystem": true,
+      "neverTurnOffMagnetDuringRecall": false,
+      "cueOffAtProgress": 0.05,
+      "recallMagnetForceMultiplier": 1,
+      "recallRadiusThreshold": 1.5,
+      "recallRequiredPercent": 90.5,
+      "recallSampleInterval": 0.5,
+      "trainingPassesPerPattern": 1,
+      "delayBetweenTrainingPasses": 0,
+      "maxWellDepth": 1,
+      "normalizeDepth": false,
+      "normalizedDepthTarget": 1,
+      "hypoWidth": 0.2,
+      "wellMergeDistance": 0.343,
+      "ballDamping": 2.55,
+      "ballMaxSpeed": 6.3,
+      "ballVelocityMultiplier": 0.62,
+      "landscapeGain": 4.05,
+      "externalGain": 57.4
+    }
+  ]
+}

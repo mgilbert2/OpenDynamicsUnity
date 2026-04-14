@@ -21,7 +21,29 @@ public class ExternalForceSource : MonoBehaviour
     [Header("Force Profile")]
     public float forceStrength = 50f;
     private float originalForceStrength = 50f;
+
+    /// <summary>Sets only runtime pull strength (e.g. explainer fade-in); does not change recall/baseline original value.</summary>
+    public void SetForceStrengthOnly(float value)
+    {
+        forceStrength = value;
+    }
     public float falloff = 3f;
+
+    [Header("Recall Noise (Magnet Path)")]
+    [Tooltip("If enabled, adds noise to the magnet position used for force (and the visual). This does NOT change the underlying waypoint progress, only the effective cue position.")]
+    public bool recallNoiseEnabled = false;
+    [Tooltip("Noise magnitude in world units (applied in XZ plane).")]
+    public float recallNoiseStrength = 0.0f;
+    [Tooltip("Use white noise (true) or mean-reverting smoothed noise (false). White = independent each frame; smoothed = Ornstein–Uhlenbeck (jitters around path, no long-term shift).")]
+    public bool recallNoiseWhite = true;
+    [Tooltip("Extra multiplier on driving noise when smoothed (OU). Scales jitter intensity together with recallNoiseStrength.")]
+    public float recallNoiseSmoothing = 2.0f;
+    [Tooltip("Mean reversion rate when smoothed (1/s). Higher = offset is pulled back toward the true path faster; prevents the whole pattern from drifting sideways.")]
+    public float recallNoiseMeanReversion = 8f;
+
+    private Vector3 recallNoiseOffset = Vector3.zero;
+    private Vector3 recallNoiseSmoothed = Vector3.zero;
+    private System.Random recallNoiseRng = new System.Random(0);
 
     [Header("Path Parameters (fallback if no asset assigned)")]
     public PathMode path = PathMode.Circle;
@@ -38,6 +60,12 @@ public class ExternalForceSource : MonoBehaviour
     public List<Vector3> waypoints = new List<Vector3>();
     public float waypointSpeed = 6f;
     public bool loop = true;
+
+    [Tooltip("When true, magnet stays at waypoints[currentWaypoint] (no MoveAlongWaypoints). Experiments set this during stabilization waits so the cue does not advance before training/recall starts.")]
+    private bool waypointMovementHold = false;
+
+    /// <summary>After snapping to a waypoint, skip auto-advance for this many MoveAlongWaypoints calls (avoids treating spawn-on-waypoint as immediate arrival).</summary>
+    private int skipWaypointArrivalFrames = 0;
 
     [Header("Eye-Tracking Data")]
     [Tooltip("Path to CSV file containing eye-tracking data (format: time,x,z or time,x,y). Can be relative to StreamingAssets or absolute path.")]
@@ -72,6 +100,21 @@ public class ExternalForceSource : MonoBehaviour
 
     private int currentWaypoint = 0;
     private float t; // timer for circle/lissajous motion
+    
+    /// <summary>
+    /// Gets the current waypoint progress as a percentage (0-1) for waypoint-based patterns.
+    /// Returns -1 if pattern is not waypoint-based or has no waypoints.
+    /// </summary>
+    public float GetWaypointProgress()
+    {
+        if (path != PathMode.Waypoints || waypoints == null || waypoints.Count == 0)
+            return -1f;
+        
+        if (patternCompleted)
+            return 1f;
+        
+        return (float)currentWaypoint / (float)waypoints.Count;
+    }
 
     // Eye-tracking data
     private EyeTrackingDataReader eyeTrackingReader = new EyeTrackingDataReader();
@@ -160,7 +203,18 @@ public class ExternalForceSource : MonoBehaviour
 
             case PathMode.Waypoints:
                 if (waypoints.Count > 0)
-                    newPos = MoveAlongWaypoints();
+                {
+                    if (waypointMovementHold)
+                    {
+                        Vector3 holdPos = waypoints[currentWaypoint];
+                        holdPos.y = 0f;
+                        newPos = holdPos;
+                    }
+                    else
+                    {
+                        newPos = MoveAlongWaypoints();
+                    }
+                }
                 break;
 
             case PathMode.EyeTracking:
@@ -178,8 +232,38 @@ public class ExternalForceSource : MonoBehaviour
         newPos.y = 0f;
         transform.position = newPos;
 
+        UpdateRecallNoiseOffset();
+
         // Update visual position immediately after setting magnet position to ensure perfect sync
         UpdateVisualPosition();
+    }
+
+    void UpdateRecallNoiseOffset()
+    {
+        if (!recallNoiseEnabled || recallNoiseStrength <= 0f)
+        {
+            recallNoiseOffset = Vector3.zero;
+            return;
+        }
+
+        float rx = (float)(recallNoiseRng.NextDouble() * 2.0 - 1.0);
+        float rz = (float)(recallNoiseRng.NextDouble() * 2.0 - 1.0);
+        Vector3 impulse = new Vector3(rx, 0f, rz);
+
+        if (recallNoiseWhite)
+        {
+            recallNoiseOffset = impulse * recallNoiseStrength;
+        }
+        else
+        {
+            // Mean-reverting (Ornstein–Uhlenbeck): dX = -θ X dt + σ dW  →  stationary around 0, no random-walk drift.
+            // The old Lerp-toward-random-target implementation was a 2D random walk and slowly shifted the whole cue off-path.
+            float dt = Time.deltaTime;
+            float theta = Mathf.Max(0.01f, recallNoiseMeanReversion);
+            float diffusion = recallNoiseStrength * Mathf.Max(0.01f, recallNoiseSmoothing);
+            recallNoiseSmoothed += (-theta * recallNoiseSmoothed + impulse * diffusion) * dt;
+            recallNoiseOffset = recallNoiseSmoothed;
+        }
     }
 
     void HandleHotSwapInput()
@@ -242,17 +326,21 @@ public class ExternalForceSource : MonoBehaviour
         Vector3 target = waypoints[currentWaypoint];
         target.y = 0f;
 
-        // Use MoveTowards for smoother, more reliable movement
         Vector3 newPos = Vector3.MoveTowards(current, target, waypointSpeed * Time.deltaTime);
+        float distAfter = Vector3.Distance(newPos, target);
 
-        // Check if we've reached the current waypoint
-        float dist = Vector3.Distance(newPos, target);
-        if (dist < 0.01f) // Smaller threshold for more precise arrival
+        if (skipWaypointArrivalFrames > 0)
         {
-            // Snap to waypoint to avoid jitter
+            skipWaypointArrivalFrames--;
+            if (distAfter < 0.01f)
+                return target;
+            return newPos;
+        }
+
+        if (distAfter < 0.01f)
+        {
             newPos = target;
 
-            // Advance to next waypoint
             if (currentWaypoint < waypoints.Count - 1)
             {
                 currentWaypoint++;
@@ -416,10 +504,22 @@ public class ExternalForceSource : MonoBehaviour
 
     public Vector3 GetForce(Vector3 worldPos)
     {
-        Vector3 delta = transform.position - worldPos;
+        Vector3 cuePos = GetEffectiveCuePosition();
+        Vector3 delta = cuePos - worldPos;
         float dist = delta.magnitude + 1e-4f;
         float strength = forceStrength / Mathf.Pow(dist, falloff);
         return delta.normalized * strength;
+    }
+
+    /// <summary>
+    /// Position used for force (and optionally noisy cue) in world space.
+    /// Waypoint progress is computed from the underlying, noise-free transform position.
+    /// </summary>
+    public Vector3 GetEffectiveCuePosition()
+    {
+        if (!recallNoiseEnabled || recallNoiseStrength <= 0f)
+            return transform.position;
+        return transform.position + recallNoiseOffset;
     }
 
     // ------------------------------------------------------------------------
@@ -448,6 +548,14 @@ public class ExternalForceSource : MonoBehaviour
     /// ✅ ADDED: Load a waypoint pattern by ID from the CSV stimulus set.
     /// Example patternId: "pat_01"
     /// </summary>
+    /// <summary>
+    /// When hold is true, waypoint mode keeps the magnet fixed at the current waypoint index (used during experiment stabilization delays).
+    /// </summary>
+    public void SetWaypointMovementHold(bool hold)
+    {
+        waypointMovementHold = hold;
+    }
+
     public void LoadWaypointPatternFromCSV(string patternId, bool loopWaypoints = false, bool snapToStart = true)
     {
         if (waypointLoader == null)
@@ -648,6 +756,7 @@ public class ExternalForceSource : MonoBehaviour
                         firstWaypoint.y = 0f;
                         transform.position = firstWaypoint;
                         UpdateVisualPosition();
+                        skipWaypointArrivalFrames = 2;
                     }
                     break;
 
@@ -684,7 +793,7 @@ public class ExternalForceSource : MonoBehaviour
     {
         if (visual == null) return;
 
-        Vector3 magnetWorldPos = transform.position;
+        Vector3 magnetWorldPos = GetEffectiveCuePosition();
 
         float targetWorldY;
         if (surface != null)
@@ -724,6 +833,50 @@ public class ExternalForceSource : MonoBehaviour
         {
             forceStrength = originalForceStrength * multiplier;
         }
+    }
+
+    /// <summary>
+    /// Show or hide the magnet visual in the scene (e.g. when cue force fades to zero during recall).
+    /// </summary>
+    public void SetMagnetVisualVisible(bool visible)
+    {
+        if (visual == null) return;
+        if (visual.gameObject.activeSelf != visible)
+            visual.gameObject.SetActive(visible);
+    }
+
+    /// <summary>
+    /// Enable/disable magnet-path noise used during recall.
+    /// </summary>
+    public void SetRecallNoiseEnabled(bool enabled)
+    {
+        recallNoiseEnabled = enabled;
+        if (!enabled)
+        {
+            recallNoiseOffset = Vector3.zero;
+            recallNoiseSmoothed = Vector3.zero;
+            UpdateVisualPosition();
+        }
+    }
+
+    /// <summary>
+    /// Configure recall noise parameters.
+    /// </summary>
+    public void SetRecallNoiseParameters(float strength, bool white, float smoothing, int seed)
+    {
+        SetRecallNoiseParameters(strength, white, smoothing, 8f, seed);
+    }
+
+    /// <summary>
+    /// Configure recall noise parameters (including mean reversion for smoothed / OU mode).
+    /// </summary>
+    public void SetRecallNoiseParameters(float strength, bool white, float smoothing, float meanReversion, int seed)
+    {
+        recallNoiseStrength = Mathf.Max(0f, strength);
+        recallNoiseWhite = white;
+        recallNoiseSmoothing = Mathf.Max(0.01f, smoothing);
+        recallNoiseMeanReversion = Mathf.Max(0.01f, meanReversion);
+        recallNoiseRng = new System.Random(seed);
     }
 
 #if UNITY_EDITOR

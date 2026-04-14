@@ -10,6 +10,9 @@ public class LearningImprint : MonoBehaviour
     [Header("Source (ball)")]
     public Transform statePoint;
 
+    [Tooltip("If true, hides the large runtime LEARNING ON/OFF label (useful for cinematics).")]
+    public bool hideRuntimeHud = false;
+
     [Header("Learning Control")]
     [Tooltip("Master switch. If false, imprinting is off unless time is inside a learning window.")]
     public bool learningOn = false;
@@ -54,13 +57,6 @@ public class LearningImprint : MonoBehaviour
 
     readonly List<Well> wells = new();
     float timer;
-    
-    // Stuck-ball detection
-    Vector3 lastImprintPosition;
-    float timeAtSamePosition = 0f;
-    const float stuckThreshold = 0.1f; // Distance threshold for "stuck" (Unity units)
-    const float stuckTimeThreshold = 0.5f; // Time threshold before considering stuck (seconds)
-    bool isStuck = false;
 
     // Diagnostics tracking
     [System.Serializable]
@@ -225,42 +221,11 @@ public class LearningImprint : MonoBehaviour
         bool active = learningOn || InsideAnyWindow(Time.time);
         if (!active || statePoint == null) return;
 
-        // Update stuck-ball detection (always, even if not learning)
-        UpdateStuckDetection();
-
         timer += Time.deltaTime;
         if (timer >= sampleInterval)
         {
             timer = 0f;
             ImprintAt(statePoint.position);
-        }
-    }
-    
-    void UpdateStuckDetection()
-    {
-        if (statePoint == null) return;
-        
-        float distFromLast = Vector3.Distance(statePoint.position, lastImprintPosition);
-        
-        if (distFromLast < stuckThreshold)
-        {
-            timeAtSamePosition += Time.deltaTime;
-            if (timeAtSamePosition >= stuckTimeThreshold && !isStuck)
-            {
-                isStuck = true;
-                Debug.LogWarning($"[LearningImprint] ⚠️ BALL STUCK DETECTED at {statePoint.position}. Stopping learning at this location to prevent landscape flattening.");
-            }
-        }
-        else
-        {
-            // Ball moved - reset stuck detection
-            timeAtSamePosition = 0f;
-            if (isStuck)
-            {
-                isStuck = false;
-                Debug.Log($"[LearningImprint] ✓ Ball unstuck, learning resumed.");
-            }
-            lastImprintPosition = statePoint.position;
         }
     }
 
@@ -297,7 +262,7 @@ public class LearningImprint : MonoBehaviour
             float r2 = (w.pos - p).sqrMagnitude;
             V += -w.depth * Mathf.Exp(-r2 / (2f * w.width * w.width));
         }
-        return V;
+        return Mathf.Max(V, -maxWellDepth);
     }
 
     public Vector3 GetGradientXZ(Vector3 worldXZ)
@@ -323,7 +288,7 @@ public class LearningImprint : MonoBehaviour
         // NOTE: Learning is ALWAYS enabled during learning phase
         // Depth capping (maxWellDepth) prevents wells from getting too deep
         // We rely on the cap checks below to prevent stuck ball scenarios
-        
+
         Vector2 p = new(world.x, world.z);
         
         float incr = learningRate * Mathf.Max(0f, hypoDepth);
@@ -521,12 +486,20 @@ public class LearningImprint : MonoBehaviour
         // If max depth is already at or below effective target after capping, we're done
         if (maxDepth <= effectiveTarget) return;
         
+        // CRITICAL: If maxDepth is already at or above maxWellDepth, DO NOT normalize
+        // Normalization would try to scale up, which we must never do
+        if (maxWellDepth > 0f && maxDepth >= maxWellDepth * 0.99f)
+        {
+            Debug.LogWarning($"[LearningImprint] Max depth ({maxDepth:F3}) is already at/near cap ({maxWellDepth:F3}). Skipping normalization to prevent exceeding cap.");
+            return; // Don't normalize - wells are already at cap
+        }
+        
         // Calculate normalization factor to scale to effective target
         float scaleFactor = effectiveTarget / maxDepth;
         
-        // CRITICAL: If normalization would scale wells above maxWellDepth, don't normalize
-        // Instead, just cap all wells to maxWellDepth
-        if (maxWellDepth > 0f && (maxDepth * scaleFactor) > maxWellDepth)
+        // CRITICAL: If normalization would scale ANY well above maxWellDepth, don't normalize
+        // Check if the deepest well would exceed cap after scaling
+        if (maxWellDepth > 0f && (maxDepth * scaleFactor) > maxWellDepth * 0.999f) // Use 0.999f to account for floating point precision
         {
             Debug.LogWarning($"[LearningImprint] Normalization would exceed maxWellDepth ({maxDepth * scaleFactor:F3} > {maxWellDepth:F3}). Capping all wells to maxWellDepth instead.");
             for (int i = 0; i < wells.Count; i++)
@@ -541,26 +514,34 @@ public class LearningImprint : MonoBehaviour
             return; // Don't normalize, just cap
         }
         
-        // Scale all depths proportionally
+        // Scale all depths proportionally, but NEVER exceed maxWellDepth
         for (int i = 0; i < wells.Count; i++)
         {
             var well = wells[i];
-            well.depth *= scaleFactor;
+            float scaledDepth = well.depth * scaleFactor;
             
-            // Enforce minimum depth (prevents wells from becoming too weak)
-            if (minWellDepth > 0f)
-            {
-                well.depth = Mathf.Max(well.depth, minWellDepth);
-            }
-            
-            // CRITICAL: Final safety check - ensure no well exceeds maxWellDepth EVER
+            // CRITICAL: Cap BEFORE applying to prevent any well from exceeding maxWellDepth
+            // This must happen BEFORE minWellDepth check to ensure cap takes precedence
             if (maxWellDepth > 0f)
             {
-                if (well.depth > maxWellDepth)
-                {
-                    Debug.LogError($"[LearningImprint] CRITICAL: Well depth {well.depth:F3} exceeded maxWellDepth {maxWellDepth:F3} after normalization! Capping immediately.");
-                    well.depth = maxWellDepth;
-                }
+                scaledDepth = Mathf.Min(scaledDepth, maxWellDepth);
+            }
+            
+            well.depth = scaledDepth;
+            
+            // Enforce minimum depth (prevents wells from becoming too weak)
+            // But only if it doesn't conflict with the cap
+            if (minWellDepth > 0f)
+            {
+                float minAllowed = (maxWellDepth > 0f) ? Mathf.Min(minWellDepth, maxWellDepth) : minWellDepth;
+                well.depth = Mathf.Max(well.depth, minAllowed);
+            }
+            
+            // Final safety check - should never trigger if above logic works, but keep for safety
+            if (maxWellDepth > 0f && well.depth > maxWellDepth)
+            {
+                Debug.LogError($"[LearningImprint] CRITICAL: Well depth {well.depth:F3} exceeded maxWellDepth {maxWellDepth:F3} after normalization! Capping immediately.");
+                well.depth = maxWellDepth;
             }
             
             wells[i] = well;
@@ -584,6 +565,9 @@ public class LearningImprint : MonoBehaviour
 
     void OnGUI()
     {
+        if (hideRuntimeHud)
+            return;
+
         // Guard against rendering during invalid states
         if (Event.current == null) return;
         
@@ -593,9 +577,10 @@ public class LearningImprint : MonoBehaviour
 
         // Big, bold runtime overlay for learning indicator + time
         GUIStyle style = new GUIStyle(GUI.skin.label);
-        style.fontSize = 32;                          // MUCH larger text
-        style.fontStyle = FontStyle.Bold;             // bold font
-        style.alignment = TextAnchor.UpperLeft;       // top-left corner
+        style.fontSize = 55;
+        style.fontStyle = FontStyle.Bold;
+        style.alignment = TextAnchor.UpperLeft;
+        style.wordWrap = true;
         style.normal.textColor = (learningOn || InsideAnyWindow(Time.time))
             ? Color.green
             : Color.red;
@@ -604,6 +589,6 @@ public class LearningImprint : MonoBehaviour
         string status = (learningOn || InsideAnyWindow(Time.time)) ? "LEARNING ON" : "LEARNING OFF";
         string text = $"{status}     Time: {Time.time:F1}s";
 
-        GUI.Label(new Rect(margin, margin, 600, 80), text, style);
+        GUI.Label(new Rect(margin, margin, 1100f, 140f), text, style);
     }
 }

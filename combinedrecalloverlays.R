@@ -7,13 +7,15 @@
 #
 # Usage:
 #   # IMPORTANT: Set working directory to where this script is located, or use full path
-#   setwd("C:/Users/Mak/Attractors")  # Adjust to your actual path
-#   source("combinedrecalloverlays.R")
-# result <- visualizeRecallOverlays(
-#     folder = "C:/Users/Mak/AppData/LocalLow/DefaultCompany/Attractors/CSVExperimentLogs/_seed300",
-#     passThreshold = 80.0
-# )
-# 
+ #   setwd("C:/Users/Mak/Attractors")  # Adjust to your actual path
+ #   
+ #   # Source the script (defines visualizeRecallOverlays)
+source("combinedrecalloverlays.R")
+   result <- visualizeRecallOverlays(
+       folder = "C:/Users/Mak/AppData/LocalLow/DefaultCompany/Attractors/CSVExperimentLogs/_seed300",
+       passThreshold = 80.0
+   )
+
 # Alternative: Use full path when sourcing:
 #   source("C:/Users/Mak/Attractors/combinedrecalloverlays.R")
 # ============================================================================
@@ -292,9 +294,16 @@ visualizeRecallOverlays <- function(folder, passThreshold = 80.0, savePlot = TRU
             newPattern <- getNewPatternAtStage(recallHistory, stage)
             
             # Find actual path file for this specific test
+            # IMPORTANT: Only match "recall_" files for recall tests (exclude "train_" files)
             actualFiles <- pathFiles$actual[pathFiles$actual$patternId == patId, ]
             if (nrow(actualFiles) == 0) {
                 cat("  Stage", stage, ", Test", globalTestNum, ": No actual path file for", patId, "\n")
+                next
+            }
+            # Filter to only recall files (not training files)
+            actualFiles <- actualFiles[grepl("^recall_", basename(actualFiles$filename), ignore.case = TRUE), ]
+            if (nrow(actualFiles) == 0) {
+                cat("  Stage", stage, ", Test", globalTestNum, ": No recall path file for", patId, "\n")
                 next
             }
             # Sort by timestamp (oldest first) to match chronological test order

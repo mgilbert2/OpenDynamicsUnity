@@ -19,19 +19,27 @@ public class WaypointPatternCSVLoader : MonoBehaviour
 
     private Dictionary<string, List<Vector3>> patterns;
 
+    /// <summary>Tracks which csvFileName was used to populate patterns (invalidate when filename changes).</summary>
+    private string lastLoadedCsvFileName;
+
     public bool IsLoaded => patterns != null && patterns.Count > 0;
 
     public void Load()
     {
-        if (IsLoaded) return;
+        // Reload if empty, or CSV file changed (fixes wrong patterns when switching files without domain reload).
+        if (IsLoaded && string.Equals(lastLoadedCsvFileName, csvFileName, System.StringComparison.Ordinal))
+            return;
 
         patterns = new Dictionary<string, List<Vector3>>();
+        lastLoadedCsvFileName = csvFileName;
 
         string path = Path.Combine(Application.streamingAssetsPath, csvFileName);
 
         if (!File.Exists(path))
         {
             Debug.LogError($"[WaypointPatternCSVLoader] CSV not found: {path}");
+            lastLoadedCsvFileName = null;
+            patterns = new Dictionary<string, List<Vector3>>();
             return;
         }
 
@@ -225,15 +233,20 @@ public class WaypointPatternCSVLoader : MonoBehaviour
     {
         if (string.IsNullOrEmpty(patternId)) return patternId;
 
-        // Check if it matches pattern like "pat_1", "pat_2", etc.
+        // pat_1 -> pat_01 (geometric sets)
         if (patternId.StartsWith("pat_") && patternId.Length > 4)
         {
             string numberPart = patternId.Substring(4);
             if (int.TryParse(numberPart, out int num))
-            {
-                // Format with leading zero (e.g., 1 -> "01", 2 -> "02", 10 -> "10")
                 return $"pat_{num:D2}";
-            }
+        }
+
+        // test_1 -> test_01 (waypoint_test_patterns_10.csv radial set)
+        if (patternId.StartsWith("test_", System.StringComparison.OrdinalIgnoreCase) && patternId.Length > 5)
+        {
+            string numberPart = patternId.Substring(5);
+            if (int.TryParse(numberPart, out int num))
+                return $"test_{num:D2}";
         }
 
         return patternId;

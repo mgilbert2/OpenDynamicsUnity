@@ -280,7 +280,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 216200859}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: eac2926e3d1a9be4f82a7017b41cceed, type: 3}
   m_Name: 
@@ -20207,7 +20207,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   statePoint: {fileID: 1246347598}
-  learningOn: 1
+  hideRuntimeHud: 0
+  learningOn: 0
   sampleInterval: 0.08
   learningRate: 0.1
   hypoDepth: 2.5
@@ -20217,8 +20218,7 @@ MonoBehaviour:
   normalizedDepthTarget: 3
   minWellDepth: 0
   wellMergeDistance: 0.469
-  learningWindows:
-  - {x: 0, y: 25}
+  learningWindows: []
 --- !u!114 &2144349799
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -20245,10 +20245,77 @@ MonoBehaviour:
   testPassed: 0
   percentInRange: 0
   testIndex: 0
+--- !u!1 &9888770010
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 9888770012}
+  - component: {fileID: 9888770011}
+  m_Layer: 0
+  m_Name: ExplainerDirector
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &9888770011
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9888770010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a8f91e3b2c54d6f8a0e1d2c3b4a5967, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  surface: {fileID: 1455723393}
+  ball: {fileID: 1246347594}
+  imprint: {fileID: 2144349798}
+  magnet: {fileID: 1456433638}
+  clearImprintOnPlay: 1
+  disableBallCsvForSequence: 1
+  hideLearningHud: 1
+  holdFlatDuration: 1.75
+  revealLandscapeBeforeDrop: 0
+  landscapeRevealDuration: 1.25
+  dropHeightAboveSurface: 6
+  ballDropDuration: 1.35
+  delayAfterLanding: 0.75
+  magnetAppearDelay: 0.25
+  carvingDuration: 18
+  rampHeightScaleDuringCarving: 1
+  rampDuringCarvingDuration: 4
+  magnetVisualFadeInDuration: 0.8
+  magnetForceFadeInDuration: 2.25
+  velocityKickXZ: {x: 2.4, y: 0, z: 1.05}
+  hideMagnetIconAtStart: 1
+  fadeMagnetIconAlpha: 0
+--- !u!4 &9888770012
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9888770010}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
+  - {fileID: 9888770012}
   - {fileID: 330585546}
   - {fileID: 410087041}
   - {fileID: 832575519}

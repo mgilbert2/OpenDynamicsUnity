@@ -4,12 +4,14 @@
 # This script plots the overall accuracy (percentage of patterns successfully
 # retrieved) at each stage as more patterns are learned.
 #
-# Usage:
-  source("VisualizeOverallAccuracy.R")
-  result <- createOverallAccuracyPlot(
-      folder = "C:/Users/Mak/AppData/LocalLow/DefaultCompany/Attractors/CSVExperimentLogs/_seed226",
-      passThreshold = 80.0
-  )
+# Usage (run these yourself after source(); do not leave them uncommented here
+#       or sourcing this file will call source() recursively and overflow the stack):
+#   setwd("C:/Users/Mak/Attractors")
+  # source("VisualizeOverallAccuracy.R")
+  # result <- createOverallAccuracyPlot(
+  #     folder = "C:/Users/Mak/AppData/LocalLow/DefaultCompany/Attractors/CSVExperimentLogs/_seed226",
+  #     passThreshold = 80.0
+  # )
 # ============================================================================
 
 library(ggplot2)
@@ -20,10 +22,12 @@ library(dplyr)
 # ============================================================================
 
 # Try to read Unity's recall_history.csv if it exists
-readRecallHistory <- function(folder) {
+readRecallHistory <- function(folder, quiet = FALSE) {
     historyFile <- file.path(folder, "recall_history.csv")
     if (file.exists(historyFile)) {
-        cat("Found recall_history.csv - using Unity's calculated recall values\n")
+        if (!isTRUE(quiet)) {
+            cat("Found recall_history.csv - using Unity's calculated recall values\n")
+        }
         data <- read.csv(historyFile, stringsAsFactors = FALSE)
         # Ensure correct column types
         if ("patternId" %in% colnames(data) && "stage" %in% colnames(data) && 
@@ -51,6 +55,78 @@ extractPatternNum <- function(patId) {
     return(999)
 }
 
+#' Stage-wise overall accuracy from recall_history rows (cumulative recall layout).
+#' @param recallData Data frame with patternId, stage, recallPercent.
+#' @param passThreshold Recall % at or above counts as pass for accuracy denominator.
+#' @param verbose If TRUE, print per-stage breakdown (same as legacy createOverallAccuracyPlot).
+#' @return Data frame: stage, totalPatterns, passedPatterns, accuracyPercent.
+compute_overall_accuracy_from_recalls <- function(recallData, passThreshold = 80.0, verbose = TRUE) {
+    if (is.null(recallData) || nrow(recallData) == 0L) {
+        stop("recallData is empty.")
+    }
+    if (verbose) {
+        uniquePatterns <- unique(recallData$patternId)
+        patternNums <- sapply(uniquePatterns, extractPatternNum)
+        sortedIndices <- order(patternNums)
+        sortedPatterns <- uniquePatterns[sortedIndices]
+        cat("Patterns:", paste(sortedPatterns, collapse = ", "), "\n\n")
+        allStages <- sort(unique(recallData$stage))
+        cat("Stages:", paste(allStages, collapse = ", "), "\n\n")
+        cat("=== Calculating Accuracy for Each Stage ===\n")
+    }
+
+    allStages <- sort(unique(recallData$stage))
+    accuracyData <- data.frame(
+        stage = integer(),
+        totalPatterns = integer(),
+        passedPatterns = integer(),
+        accuracyPercent = numeric(),
+        stringsAsFactors = FALSE
+    )
+
+    for (stage in allStages) {
+        stageData <- recallData[recallData$stage == stage, ]
+        if (nrow(stageData) == 0L) {
+            next
+        }
+        stagePatterns <- unique(stageData$patternId)
+        patternRecalls <- data.frame(
+            patternId = character(length(stagePatterns)),
+            recallPercent = numeric(length(stagePatterns)),
+            stringsAsFactors = FALSE
+        )
+        for (j in seq_along(stagePatterns)) {
+            patId <- stagePatterns[j]
+            patData <- stageData[stageData$patternId == patId, ]
+            patternRecalls$patternId[j] <- patId
+            patternRecalls$recallPercent[j] <- patData$recallPercent[nrow(patData)]
+        }
+        totalPatterns <- nrow(patternRecalls)
+        passedPatterns <- sum(patternRecalls$recallPercent >= passThreshold)
+        accuracyPercent <- (passedPatterns / totalPatterns) * 100
+        if (verbose) {
+            cat(sprintf("Stage %d: %d/%d patterns passed (%.1f%% accuracy)\n",
+                stage, passedPatterns, totalPatterns, accuracyPercent))
+            for (i in seq_len(nrow(patternRecalls))) {
+                patId <- patternRecalls$patternId[i]
+                recall <- patternRecalls$recallPercent[i]
+                status <- if (recall >= passThreshold) "✓" else "✗"
+                cat(sprintf("  %s %s: %.1f%%\n", status, patId, recall))
+            }
+        }
+        accuracyData <- rbind(accuracyData, data.frame(
+            stage = stage,
+            totalPatterns = totalPatterns,
+            passedPatterns = passedPatterns,
+            accuracyPercent = accuracyPercent
+        ))
+    }
+    if (verbose) {
+        cat("\n")
+    }
+    accuracyData
+}
+
 # ============================================================================
 # Main Function: Create Overall Accuracy Plot
 # ============================================================================
@@ -71,80 +147,9 @@ createOverallAccuracyPlot <- function(folder, passThreshold = 80.0, savePlot = T
         stop("recall_history.csv not found. Please run an experiment with cumulative recall mode enabled in Unity.")
     }
     
-    cat("Loaded", nrow(recallData), "recall test results\n")
-    
-    # Get unique patterns and sort by number
-    uniquePatterns <- unique(recallData$patternId)
-    patternNums <- sapply(uniquePatterns, extractPatternNum)
-    sortedIndices <- order(patternNums)
-    sortedPatterns <- uniquePatterns[sortedIndices]
-    
-    cat("Patterns:", paste(sortedPatterns, collapse = ", "), "\n\n")
-    
-    # Get all unique stages
-    allStages <- sort(unique(recallData$stage))
-    cat("Stages:", paste(allStages, collapse = ", "), "\n\n")
-    
-    # For each stage, calculate overall accuracy
-    accuracyData <- data.frame(
-        stage = integer(),
-        totalPatterns = integer(),
-        passedPatterns = integer(),
-        accuracyPercent = numeric(),
-        stringsAsFactors = FALSE
-    )
-    
-    cat("=== Calculating Accuracy for Each Stage ===\n")
-    
-    for (stage in allStages) {
-        # Get all patterns that have been tested at this stage
-        stageData <- recallData[recallData$stage == stage, ]
-        
-        if (nrow(stageData) == 0) {
-            next
-        }
-        
-        # For each pattern tested at this stage, get its recall percentage
-        # Use the last test for each pattern at this stage
-        stagePatterns <- unique(stageData$patternId)
-        patternRecalls <- data.frame(
-            patternId = character(length(stagePatterns)),
-            recallPercent = numeric(length(stagePatterns)),
-            stringsAsFactors = FALSE
-        )
-        
-        for (j in seq_along(stagePatterns)) {
-            patId <- stagePatterns[j]
-            patData <- stageData[stageData$patternId == patId, ]
-            patternRecalls$patternId[j] <- patId
-            patternRecalls$recallPercent[j] <- patData$recallPercent[nrow(patData)]
-        }
-        
-        # Count total patterns and how many passed
-        totalPatterns <- nrow(patternRecalls)
-        passedPatterns <- sum(patternRecalls$recallPercent >= passThreshold)
-        accuracyPercent <- (passedPatterns / totalPatterns) * 100
-        
-        cat(sprintf("Stage %d: %d/%d patterns passed (%.1f%% accuracy)\n", 
-                   stage, passedPatterns, totalPatterns, accuracyPercent))
-        
-        # Show which patterns passed/failed
-        for (i in 1:nrow(patternRecalls)) {
-            patId <- patternRecalls$patternId[i]
-            recall <- patternRecalls$recallPercent[i]
-            status <- if (recall >= passThreshold) "✓" else "✗"
-            cat(sprintf("  %s %s: %.1f%%\n", status, patId, recall))
-        }
-        
-        accuracyData <- rbind(accuracyData, data.frame(
-            stage = stage,
-            totalPatterns = totalPatterns,
-            passedPatterns = passedPatterns,
-            accuracyPercent = accuracyPercent
-        ))
-    }
-    
-    cat("\n")
+    cat("Loaded", nrow(recallData), "recall test results\n\n")
+
+    accuracyData <- compute_overall_accuracy_from_recalls(recallData, passThreshold, verbose = TRUE)
     
     # Create the plot
     cat("=== Creating Accuracy Plot ===\n")
