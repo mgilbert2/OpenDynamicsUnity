@@ -88,6 +88,10 @@ Recordings/
 *.pdf
 UpgradeLog.htm
 
+# Allow tracked analysis outputs (keep repo portable)
+!overall_accuracy_output/**/*.png
+!overall_accuracy_output/**/*.pdf
+
 # R data files (if you have large datasets)
 *.RData
 *.rdata
