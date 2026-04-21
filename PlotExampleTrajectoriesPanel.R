@@ -142,11 +142,16 @@ make_panel_plot <- function(folders = FOLDERS, pattern_num = PATTERN_NUM) {
     ) +
     theme_minimal(base_size = 12) +
     theme(
+      text = element_text(face = "bold"),
+      plot.title = element_text(face = "bold"),
+      plot.subtitle = element_text(face = "bold"),
+      legend.text = element_text(face = "bold"),
+      strip.text = element_text(face = "bold"),
       panel.grid = element_blank(),
       axis.text = element_blank(),
       axis.ticks = element_blank(),
       legend.position = "bottom",
-      strip.text = element_text(face = "bold")
+      legend.title = element_text(face = "bold")
     )
 }
 

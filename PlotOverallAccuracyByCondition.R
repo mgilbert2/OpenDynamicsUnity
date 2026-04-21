@@ -159,7 +159,16 @@ plot_overall_accuracy_conditions <- function(all_df, stimulus = NULL) {
       color = "Condition"
     ) +
     theme_minimal(base_size = 12) +
-    theme(legend.position = "left")
+    theme(
+      text = element_text(face = "bold"),
+      plot.title = element_text(face = "bold"),
+      plot.subtitle = element_text(face = "bold"),
+      axis.title = element_text(face = "bold"),
+      axis.text = element_text(face = "bold"),
+      legend.title = element_text(face = "bold"),
+      legend.text = element_text(face = "bold"),
+      legend.position = "left"
+    )
 }
 
 # ---- Run (in RStudio: Source this file) ----
